@@ -7,9 +7,9 @@ This repository is the official PyTorch implementation of the paper:
 
 Cross‑subject continuous EEG emotion regression faces three core challenges: complementary spectral features cannot be fully exploited, temporal mixer capacity mismatches the small‑sample leave‑one‑subject‑out(LOSO) setting, and point‑wise loss fails to constrain temporal dynamics of affective trajectories. We propose **DSTD‑Net**, addressing these three limitations based on the EmT baseline:
 
-1. **Dual‑stream RMPG Encoder**:Two parameter‑independent Residual Multiview Pyramid Graph (RMPG) encoders separately process rPSD and differential entropy(DE) features, whose output token sequences are fused by a single‑parameter learnable scalar gate \(\alpha\).
-2. *Capacity‑matched lightweight temporal mixer**: Adopts one‑layer bidirectional GRU inside Temporal Contextual Transformer(TCT), instead of two‑layer Bi‑GRU, to reduce model variance and avoid subject‑level overfitting under LOSO cross‑validation.
-3. **Four‑term temporal‑difference training objective**: Combines CCC loss, MSE loss, temporal‑difference loss \(L_{TD}\) and smoothness regularizer. The temporal‑difference loss explicitly supervises frame‑to‑frame changes of prediction trajectory. Shared channel masking is further applied during training as regularization.
+1. **Dual‑stream RMPG Encoder**:Two parameter‑independent Residual Multiview Pyramid Graph (RMPG) encoders separately process rPSD and differential entropy(DE) features, whose output token sequences are fused by a single‑parameter learnable scalar gate α.
+2. **Capacity‑matched lightweight temporal mixer**: Adopts one‑layer bidirectional GRU inside Temporal Contextual Transformer(TCT), instead of two‑layer Bi‑GRU, to reduce model variance and avoid subject‑level overfitting under LOSO cross‑validation.
+3. **Four‑term temporal‑difference training objective**: Combines CCC loss, MSE loss, temporal‑difference loss L<sub>TD</sub> and smoothness regularizer. The temporal‑difference loss explicitly supervises frame‑to‑frame changes of prediction trajectory. Shared channel masking is further applied during training as regularization.
 
 ## ⚙️ Environment Setup
 
@@ -65,7 +65,7 @@ pip install -r requirements.txt
 **Important**: The core scripts in this repository (e.g., `dataset.py`, `trainer.py`, `experiment.py`) are configured by default for **MAHNOB‑HCI (Continuous Trajectory Regression)**.
 
 ⚠️ DEAP only provides one discrete valence rating for each trial, which requires a `Sequence‑to‑One` regression protocol.
-> Note: The temporal‑difference loss \(L_{TD}\) and smoothness regularizer cannot be used for DEAP, since there are no frame‑wise continuous annotations. You **must** pass argument `-use_temporal 0` during DEAP training.
+> Note: The temporal‑difference loss L<sub>TD</sub> and smoothness regularizer cannot be used for DEAP, since there are no frame‑wise continuous annotations. You **must** pass argument `-use_temporal 0` during DEAP training.
 
 To reproduce the DEAP transfer experiments reported in our paper, apply the following source‑code modifications:
 
@@ -170,7 +170,7 @@ If you find this code or our paper useful in your research, please consider citi
 
 ## 🙏 Acknowledgements
 
-This codebase is heavily built upon the open‑source EmT repository [GitHub](https://github.com/yi%E2%80%91ding%E2%80%91cs/EmT)]. We sincerely thank the authors for releasing their valuable code and benchmark protocol for cross‑subject EEG emotion analysis.
+This codebase is heavily built upon the open‑source EmT repository [GitHub](https://github.com/yi-ding-cs/EmT). We sincerely thank the authors for releasing their valuable code and benchmark protocol for cross‑subject EEG emotion analysis.
 
 ## 📬 Contact
 
