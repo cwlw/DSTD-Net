@@ -1,15 +1,15 @@
-# DSL-EmT: A Dual-Stream Lightweight Temporal Difference Transformer for Cross-Subject EEG Valence Regression
+# DSTD‑Net: A Dual‑Stream Temporal‑Difference Network for Cross‑Subject Continuous EEG Emotion Regression
 
 This repository is the official PyTorch implementation of the paper:
-**"DSL-EmT: A Dual-Stream Lightweight Temporal Difference Transformer for Cross-Subject EEG Valence Regression"** *(Journal/Conference decision pending)*.
+**"DSTD‑Net: A Dual‑Stream Temporal‑Difference Network for Cross‑Subject Continuous EEG Emotion Regression"** **(Journal/Conference decision pending)**.
 
 ## 📖 Introduction
 
-Cross-subject EEG emotion regression is challenging due to high inter-subject variability and the continuous nature of emotional dynamics. We propose **DSL-EmT**, which addresses three practical weaknesses of the existing EmT baseline:
+Cross‑subject continuous EEG emotion regression faces three core challenges: complementary spectral features cannot be fully exploited, temporal mixer capacity mismatches the small‑sample leave‑one‑subject‑out(LOSO) setting, and point‑wise loss fails to constrain temporal dynamics of affective trajectories. We propose **DSTD‑Net**, addressing these three limitations based on the EmT baseline:
 
-1. **Dual-Stream Encoder**: Encodes rPSD and DE features independently using two Residual Multiview Pyramid GCN (RMPG) streams, fused via a learnable scalar gate \(\alpha\).
-2. **Lightweight Temporal Mixer**: Replaces the 2-layer Bi-GRU with a 1-layer Bi-GRU to mitigate overfitting in small-sample LOSO protocols.
-3. **Temporal Difference Loss**: Introduces a \(L_{TD}\) constraint to explicitly supervise the trajectory shape (adjacent-frame changes), alongside a smoothness regularizer and training-time channel masking.
+1. **Dual‑stream RMPG Encoder**:Two parameter‑independent Residual Multiview Pyramid Graph (RMPG) encoders separately process rPSD and differential entropy(DE) features, whose output token sequences are fused by a single‑parameter learnable scalar gate \(\alpha\).
+2. *Capacity‑matched lightweight temporal mixer**: Adopts one‑layer bidirectional GRU inside Temporal Contextual Transformer(TCT), instead of two‑layer Bi‑GRU, to reduce model variance and avoid subject‑level overfitting under LOSO cross‑validation.
+3. **Four‑term temporal‑difference training objective**: Combines CCC loss, MSE loss, temporal‑difference loss \(L_{TD}\) and smoothness regularizer. The temporal‑difference loss explicitly supervises frame‑to‑frame changes of prediction trajectory. Shared channel masking is further applied during training as regularization.
 
 ## ⚙️ Environment Setup
 
@@ -33,9 +33,9 @@ pip install -r requirements.txt
 ├── base/                       # Core functional modules
 │   ├── checkpointer.py         # Model saving and checkpoint recovery
 │   ├── dataset.py              # Data loading, windowing, and LOSO partitioning
-│   ├── egg.py                  # EEG signal processing helpers (Note: filename reflects repo state)
+│   ├── eeg.py                  # EEG signal processing helpers (Note: historical filename in repo)
 │   ├── experiment.py           # Base experiment class defining general workflows
-│   ├── feature_fusion.py       # Early feature fusion module (replaced by internal α gate in EmT)
+│   ├── feature_fusion.py       # Early feature fusion module, deprecated; token‑level learnable α‑gate is implemented inside model/EmT.py
 │   ├── label_configs.py        # Label dimension mapping configurations
 │   ├── logger.py               # Metric calculation (RMSE, PCC, CCC) and logging
 │   ├── loss_function.py        # Hybrid losses (CCC, MSE, Temporal Difference, Smoothness)
@@ -62,22 +62,35 @@ pip install -r requirements.txt
 
 ## ⚠️ Guide for DEAP Extension
 
-**Important**: The core scripts in this repository (e.g., `dataset.py`, `trainer.py`, `experiment.py`) are configured by default for **MAHNOB-HCI (Continuous Trajectory Regression)**. 
+**Important**: The core scripts in this repository (e.g., `dataset.py`, `trainer.py`, `experiment.py`) are configured by default for **MAHNOB‑HCI (Continuous Trajectory Regression)**.
 
-Because DEAP provides only a single discrete valence rating per trial, it requires a `Sequence-to-One` regression protocol. To reproduce the DEAP extension experiments in the paper, you need to make the following modifications:
+⚠️ DEAP only provides one discrete valence rating for each trial, which requires a `Sequence‑to‑One` regression protocol.
+> Note: The temporal‑difference loss \(L_{TD}\) and smoothness regularizer cannot be used for DEAP, since there are no frame‑wise continuous annotations. You **must** pass argument `-use_temporal 0` during DEAP training.
 
-1. **`configs.py`**:
-   * Change `"sampling_frequency"` in `eeg_config` from `256` to `128`.
-   * Update `"output_root_directory"` to point to your DEAP output path.
-2. **`base/dataset.py`**:
-   * Modify `DataArranger.partition_range_fn()`: Change the hardcoded 24-fold division to dynamically generate 32 folds based on `subject_no`.
-   * Modify `_EEGFeatureMixin.get_example()`: For continuous labels, use `np.mean(example, axis=0)` to average them over the time dimension, producing a single value `(1,)`.
-3. **`model/EmT.py`**:
-   * Modify the `forward()` function: After `self.transformer`, add `fused_pooled = torch.mean(fused, dim=1)` to pool the 96-frame sequence into a single feature before feeding it into `self.MLP`.
-4. **`base/trainer.py`**:
-   * Modify the `loop()` function: Remove the label dimension check and zeroing. After `outputs = self.model(...)`, expand the dimensions of both `outputs` and `labels` (`unsqueeze(1).repeat(1, seq_len, 1)`) to adapt to the 3D metric calculation in `logger.py`.
-5. **`generate_result_csv.py`**:
-   * Change `num_folds=24` to `num_folds=32` to aggregate DEAP results.
+To reproduce the DEAP transfer experiments reported in our paper, apply the following source‑code modifications:
+
+1. **`configs.py`**
+   * Change `"sampling_frequency"` inside `eeg_config` from `256` to `128`.
+   * Update `"output_root_directory"` to your local DEAP output directory.
+
+2. **`base/dataset.py`**
+   * Modify `DataArranger.partition_range_fn()`: Replace the hard‑coded 24‑fold split logic, dynamically generate 32 LOSO folds according to `subject_no`.
+   * Modify `_EEGFeatureMixin.get_example()`: Average labels across temporal dimension with `np.mean(example, axis=0)`, compressing frame‑wise labels into a single scalar value with shape `(1,)`.
+
+3. **`model/EmT.py`**
+   * In `forward()` function, after the `self.transformer` block, add global temporal pooling:
+     `fused_pooled = torch.mean(fused, dim=1)`
+     This aggregates the 96‑frame token sequence into one feature vector before feeding into the regression MLP head.
+
+4. **`base/trainer.py`**
+   * Inside training loop `loop()`, remove the original continuous‑label dimension validation logic.
+   * After obtaining `outputs = self.model(...)`, expand dimensions for both outputs and labels:
+     `unsqueeze(1).repeat(1, seq_len, 1)`
+     This adapts outputs to the 3‑dimensional input requirement of metric functions in `logger.py`.
+
+5. **`generate_result_csv.py`**
+   * Change `num_folds=24` to `num_folds=32` for aggregating results over DEAP’s 32‑fold LOSO evaluation.
+
 
 *(Note: When running DEAP training, you **must** add the parameter `-use_temporal 0` to disable the temporal difference loss, as trial-level labels do not have adjacent-frame variations).*
 
@@ -90,23 +103,23 @@ Because DEAP provides only a single discrete valence rating per trial, it requir
 
 ### 2. Reproducing MAHNOB-HCI Main Results (Table I)
 
-To run the 24-fold LOSO cross-validation for the full DSL-EmT model:
+To run the 24‑fold LOSO cross‑validation for the full **DSTD‑Net** model (MAHNOB‑HCI continuous valence regression):
 
 ```bash
 python main.py \
-  -experiment_name DSL_EmT_MAHNOB \
+  -experiment_name DSTD_Net_MAHNOB \
   -stamp MAHNOB_A0 \
   -gpu 0 \
   -case loso \
   -task reg \
-  -num-eeg-chan 32 \
-  -num-f 6 \
+  -num‑eeg‑chan 32 \
+  -num‑f 6 \
   -window_length 96 \
   -hop_length 32 \
   -batch_size 2 \
   -mse_weight 2.0 \
-  -use_temporal 1 \
-  -temporal_weight 0.05 \
+  -use_temporal 1 \          # 开启时序差分损失（MAHNOB‑HCI连续标签启用）
+  -temporal_weight 0.05 \    # 时序差分损失权重 λ₂=0.05
   -dataset_path [YOUR_MAHNOB_OUT_PATH]
 ```
 
@@ -116,14 +129,14 @@ python main.py \
 
 ```bash
 python main.py \
-  -experiment_name DSL_EmT_DEAP \
+  -experiment_name DSTD_Net_DEAP \
   -stamp DEAP_TrialReg \
   -gpu 0 -case loso -task reg \
-  -num-eeg-chan 32 -num-f 6 \
+  -num‑eeg‑chan 32 -num‑f 6 \
   -window_length 96 -hop_length 32 \
   -batch_size 2 \
   -mse_weight 2.0 \
-  -use_temporal 0 \
+  -use_temporal 0 \         # DEAP单试次标签，关闭时序差分损失
   -dataset_path [YOUR_DEAP_OUT_PATH]
 ```
 
@@ -137,7 +150,7 @@ python generate_result_csv.py -path_to_read_result [YOUR_SAVE_PATH]
 
 ## 📦 Pre-trained Models & Weights
 
-We provide the weights and training logs for the full DSL-EmT model (MAHNOB-HCI, all 24 LOSO folds).
+We provide checkpoint weights and training logs for full **DSTD‑Net** on MAHNOB‑HCI (all 24 LOSO folds).
 
 * **Baidu Netdisk**: [https://pan.baidu.com/s/1MBAx0onlvE8oyNH9Qlbj6w?pwd=pp2s](https://pan.baidu.com/s/1MBAx0onlvE8oyNH9Qlbj6w?pwd=pp2s) 
 * **Extraction Code**: `pp2s`
@@ -147,17 +160,17 @@ We provide the weights and training logs for the full DSL-EmT model (MAHNOB-HCI,
 If you find this code or our paper useful in your research, please consider citing:
 
 ```bibtex
-@article{Author2025dslemt,
-  title={DSL-EmT: A Dual-Stream Lightweight Temporal Difference Transformer for Cross-Subject EEG Valence Regression},
+@article{yourkey_dstdnet,
+  title={DSTD‑Net: A Dual‑Stream Temporal‑Difference Network for Cross‑Subject Continuous EEG Emotion Regression},
   author={Author 1, Author 2, Author 3},
   journal={Under Review},
-  year={2025}
+  year={2026}
 }
 ```
 
 ## 🙏 Acknowledgements
 
-This codebase is heavily built upon the open-source [EmT repository](https://github.com/yi-ding-cs/EmT). We thank the authors for their excellent work.
+This codebase is heavily built upon the open‑source EmT repository [GitHub](https://github.com/yi%E2%80%91ding%E2%80%91cs/EmT)]. We sincerely thank the authors for releasing their valuable code and benchmark protocol for cross‑subject EEG emotion analysis.
 
 ## 📬 Contact
 
